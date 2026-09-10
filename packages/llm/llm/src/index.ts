@@ -606,11 +606,17 @@ export class LlmRuntime extends TypertRemoteService {
     for (const model of discovered) {
       if (typeof model.id !== 'string' || model.id.length === 0 || seen.has(model.id)) continue
       seen.add(model.id)
+      // Rebuilt field by field rather than spread: an adapter's rows are
+      // external input, so only the fields this contract publishes travel on.
+      // A candidate field added to `LlmDiscoveredModel` lands here in the same
+      // change that declares it.
       models.push({
         id: model.id,
         ...model.name === undefined ? {} : { name: model.name },
         ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
         ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+        ...model.inputModalities === undefined ? {} : { inputModalities: model.inputModalities },
+        ...model.reasoningEfforts === undefined ? {} : { reasoningEfforts: model.reasoningEfforts },
       })
     }
     return models

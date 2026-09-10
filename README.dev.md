@@ -1,6 +1,6 @@
 # dev 分支本地安装与启动指南（README.dev）
 
-> 本文件只适用于**本地 fork 仓库**（`D:\Ds_Projects\TypeScript\deepseek-harness`，dev 分支）的安装与日常启动说明，与上游发布版行为无关。内容包含自制特性（pi-ai 思考档位发现与编辑器、请求头 `${sessionId}` 模板）与本地布局打磨的启动方式。
+> 本文件只适用于**本地 fork 仓库**（`D:\Ds_Projects\TypeScript\deepseek-harness`，dev 分支）的安装与日常启动说明，与上游发布版行为无关。内容包含自制特性（pi-ai 思考档位发现与编辑器、模型输入模态发现与编辑器、请求头 `${sessionId}` 模板）与本地布局打磨的启动方式。
 
 ## 仓库即 dsh 本体
 
@@ -66,5 +66,6 @@ dsh web: http://127.0.0.1:3081/?token=<每次随机>
 ## dev 分支自制特性一览
 
 - pi-ai 思考档位：`LlmDiscoveredModel.reasoningEfforts` 发现透传 + Models 页逐模型思考强度编辑器（`packages/llm/llm`、`packages/llm/llm-pi-ai`、`packages/client/ui-settings-models`）
+- 模型输入模态：`LlmDiscoveredModel.inputModalities` 发现透传（内置 catalog 与端点 listing）+ Models 页逐模型模态复选框，pi-ai 与 DeepSeek catalog 均支持；同时修复 `LlmRuntime.discoverModels` 逐字段重建丢弃候选字段（含此前丢失的思考档位）
 - pi-ai 请求头模板：`${sessionId}`/`${provider}`/`${model}` 请求时替换（`packages/llm/llm-pi-ai/src/adapter.ts`、`config.ts`）
-- 对应 Agent Notes：`.agents/notes/implemented/feature/2026-09-10-pi-ai-reasoning-efforts-discovery-and-editor.{md,zh.md}`、`2026-09-10-pi-ai-request-header-templates.{md,zh.md}`
+- 对应 Agent Notes：`.agents/notes/implemented/feature/2026-09-10-pi-ai-reasoning-efforts-discovery-and-editor.{md,zh.md}`、`2026-09-10-pi-ai-model-modalities-discovery-and-editor.{md,zh.md}`、`2026-09-10-pi-ai-request-header-templates.{md,zh.md}`

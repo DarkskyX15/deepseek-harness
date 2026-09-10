@@ -542,10 +542,10 @@
   line-height: 18px;
 }
 
-/* Thinking-levels editor: spans every disclosure column so the level rows
-   wrap horizontally instead of stacking one label per line, and its wire
-   spellings sit beside their level names rather than beneath them. */
-.thinkingField {
+/* A field group spanning every disclosure column (thinking levels, input
+   modalities): its option lines wrap horizontally instead of stacking one
+   label per line. */
+.choiceField {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
@@ -561,19 +561,18 @@
   cursor: pointer;
 }
 
-/* Level lines in a grid of equal columns: every checkbox starts at the same
-   column, and every wire field stretches to its cell's right edge, so the
+/* Option lines in a grid of equal columns: every checkbox starts at the same
+   column and every trailing field stretches to its cell's right edge, so the
    options read as aligned rows instead of a ragged wrap. */
-.thinkingLevels {
+.choiceGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 6px 12px;
 }
 
-/* One level line: its checkbox, name, and a wire field that stretches to the
-   grid cell's end share a row, so a long level name squeezes the wire cell
-   instead of overflowing. */
-.thinkingLevel {
+/* One option line: its checkbox and name, plus any trailing field, share a row
+   so a long label squeezes that field instead of overflowing. */
+.choiceLine {
   display: flex;
   align-items: center;
   gap: 6px;

@@ -296,6 +296,15 @@ export interface LlmDiscoveredModel {
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
   /**
+   * Accepted request modalities the catalog or listing disclosed. Absent means
+   * the source said nothing, so adoption leaves the destination entry
+   * untouched — for a pi-ai route that keeps the installed catalog's
+   * modalities and then the route's `defaultInput`. A plain array rather than
+   * the `readonly` form on {@link LlmModelInfo}: this value crosses the Remote
+   * boundary as JSON.
+   */
+  inputModalities?: ModelModality[]
+  /**
    * Reasoning levels the endpoint discloses, in the same shape adapter
    * configuration accepts: `false` declares a non-reasoning model, and a
    * dict maps each offered level to its wire spelling (`null` spells "send

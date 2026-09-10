@@ -62,6 +62,7 @@ const DeepSeekConfig = Schema.object({
     name: Schema.string(),
     description: Schema.string(),
     contextWindow: Schema.number().step(1).min(1),
+    inputModalities: Schema.array(Schema.union(['text', 'image'])).default(['text']),
   // The adapter declares its catalog as a schema default rather than a
   // composition entry, which is what the restore-defaults path has to read.
   })).default([
@@ -70,12 +71,14 @@ const DeepSeekConfig = Schema.object({
       name: 'DeepSeek-V4-Flash',
       description: '',
       contextWindow: 1_000_000,
+      inputModalities: ['text'],
     },
     {
       id: 'deepseek-v4-pro',
       name: 'DeepSeek-V4-Pro',
       description: '',
       contextWindow: 1_000_000,
+      inputModalities: ['text'],
     },
   ]),
 })
@@ -665,6 +668,36 @@ describe('ModelsSection', () => {
     ])
   })
 
+  it('declares the input modalities one row accepts', async () => {
+    const { mutate } = await mountDeepSeekCard({
+      mutate: vi.fn(() => Promise.resolve(remoteOk(wireNamespaces()[0]))),
+    })
+    fireEvent.click(screen.getByText(en.customized))
+    expandRow(1)
+    // An undeclared row shows the adapter default, so ticking image adds to
+    // the text every request already carries instead of replacing it.
+    const text = screen.getByLabelText<HTMLInputElement>(`${en.modelModalities} ${en['modality.text']} 1`)
+    const image = screen.getByLabelText<HTMLInputElement>(`${en.modelModalities} ${en['modality.image']} 1`)
+    expect([text.checked, image.checked]).toEqual([true, false])
+
+    fireEvent.click(image)
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(mutate.mock.calls[0]).toEqual([
+      'llm-deepseek',
+      [{
+        op: 'set',
+        path: ['models'],
+        value: [
+          { ...DEFAULT_DEEPSEEK_MODELS[0], inputModalities: ['text', 'image'] },
+          DEFAULT_DEEPSEEK_MODELS[1],
+        ],
+      }],
+      0,
+    ])
+  })
+
   it('rejects duplicate DeepSeek model ids before writing', async () => {
     const { mutate } = await mountDeepSeekCard()
     fireEvent.click(screen.getByText(en.customized))
@@ -699,6 +732,13 @@ describe('ModelsSection', () => {
     expect(validateDeepSeekModels([{ id: 'model', maxTokens: 0 }]))
       .toEqual({ index: 0, key: 'modelMaxTokensInvalid' })
     expect(validateDeepSeekModels([{ id: 'model', maxTokens: 8192 }])).toBeUndefined()
+    expect(validateDeepSeekModels([{ id: 'model', inputModalities: [] }]))
+      .toEqual({ index: 0, key: 'modelModalitiesInvalid' })
+    expect(validateDeepSeekModels([{ id: 'model', inputModalities: ['audio'] }]))
+      .toEqual({ index: 0, key: 'modelModalitiesInvalid' })
+    expect(validateDeepSeekModels([{ id: 'model', inputModalities: ['text', 'text'] }]))
+      .toEqual({ index: 0, key: 'modelModalitiesInvalid' })
+    expect(validateDeepSeekModels([{ id: 'model', inputModalities: ['text', 'image'] }])).toBeUndefined()
   })
 
   it('reads context windows written as counts, thousands, or millions', () => {

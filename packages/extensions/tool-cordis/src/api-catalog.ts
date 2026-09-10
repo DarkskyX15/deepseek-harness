@@ -4516,7 +4516,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmDiscoveredModel',
-    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    reasoningEfforts?: false | Record<string, string | null>;\n}',
+    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    inputModalities?: ModelModality[];\n    reasoningEfforts?: false | Record<string, string | null>;\n}',
   },
   {
     name: 'LlmFailure',

@@ -18,7 +18,10 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import { formatCapacity, parseCapacity, reasoningEffortsOf, THINKING_LEVELS, type ThinkingEfforts } from './DeepSeekModelsEditor.tsx'
+import {
+  formatCapacity, inputModalitiesOf, ModalityEditor, parseCapacity, reasoningEffortsOf, THINKING_LEVELS,
+  type ThinkingEfforts,
+} from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
 import type { ModelsOperations } from './operations.ts'
 import type { en } from './locales.ts'
@@ -42,8 +45,8 @@ function numberOf(model: ModelDraft, key: string): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
-/** One field value a row edit may write: the scalar fields plus the thinking dict. */
-type ModelPatchValue = string | number | boolean | ThinkingEfforts | undefined
+/** One field value a row edit may write: the scalars, the thinking dict, and the modality list. */
+type ModelPatchValue = string | number | boolean | ThinkingEfforts | readonly string[] | undefined
 
 /** What an interrogation needs, taken from the live form. */
 export interface ProbeTarget {
@@ -144,13 +147,21 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
-/** Adopt a candidate, keeping whatever capacities and reasoning levels the provider disclosed. */
+/**
+ * The profile field a pi-ai model entry declares its input modalities in.
+ * The discovery candidate calls the same fact `inputModalities`, which is the
+ * DeepSeek catalog's spelling; adoption renames it to this one.
+ */
+const PI_AI_MODALITY_FIELD = 'input'
+
+/** Adopt a candidate, keeping the capacities, modalities, and thinking levels the provider disclosed. */
 function adopt(candidate: LlmDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
     ...candidate.name === undefined ? {} : { name: candidate.name },
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
+    ...candidate.inputModalities === undefined ? {} : { [PI_AI_MODALITY_FIELD]: candidate.inputModalities },
     ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: candidate.reasoningEfforts },
   }
 }
@@ -216,7 +227,7 @@ function ThinkingLevelsEditor(props: {
     return level === 'off' && value === null ? '' : typeof value === 'string' ? value : ''
   }
   return (
-    <div className={styles['thinkingField']}>
+    <div className={styles['choiceField']}>
       <span className={styles['modelFieldLabel']}>{t('thinkingLevels')}</span>
       <label className={styles['thinkingSwitch']}>
         <input
@@ -230,9 +241,9 @@ function ThinkingLevelsEditor(props: {
       </label>
       {thinking
         ? (
-          <div className={styles['thinkingLevels']}>
+          <div className={styles['choiceGrid']}>
             {THINKING_LEVELS.map(level => (
-              <label className={styles['thinkingLevel']} key={level}>
+              <label className={styles['choiceLine']} key={level}>
                 <input
                   type="checkbox"
                   checked={level in efforts}
@@ -551,6 +562,13 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
                   />
                 </label>
+                <ModalityEditor
+                  value={inputModalitiesOf(model, PI_AI_MODALITY_FIELD)}
+                  position={index + 1}
+                  disabled={disabled}
+                  t={t}
+                  onChange={(input) => { patch(index, { [PI_AI_MODALITY_FIELD]: input }) }}
+                />
                 <ThinkingLevelsEditor
                   model={model}
                   disabled={disabled}

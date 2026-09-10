@@ -4,9 +4,9 @@
  *
  * A route the installed pi-ai catalog ships is answered **from that catalog**,
  * with no network call at all: pi-ai's registry is the authoritative list for
- * its own providers, and it carries the capacities a listing endpoint would
- * not disclose. Only a route the catalog does not describe — a gateway, a
- * self-hosted server — is interrogated over the wire.
+ * its own providers, and it carries the capacities and modalities a listing
+ * endpoint would not disclose. Only a route the catalog does not describe — a
+ * gateway, a self-hosted server — is interrogated over the wire.
  *
  * Neither path is a catalog refresh. Nothing here is stored: the request
  * carries a draft the user is still editing, and the reply is candidate
@@ -23,10 +23,10 @@
  */
 
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
-import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
+import type { LlmDiscoveredModel, LlmModelDiscoveryOperation, ModelModality } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import type { Api, Model } from '@earendil-works/pi-ai'
-import { THINKING_LEVELS, catalogModels } from './catalog.ts'
+import { MODALITIES, THINKING_LEVELS, catalogModels } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -69,6 +69,11 @@ interface ListingTopProvider {
   max_completion_tokens?: unknown
 }
 
+/** Input-modality disclosure nested by enriched model-directory replies. */
+interface ListingArchitecture {
+  input_modalities?: unknown
+}
+
 /** One entry of a supported `GET /models` reply. */
 interface ListingEntry {
   id?: unknown
@@ -86,6 +91,12 @@ interface ListingEntry {
   maxTokens?: unknown
   limit?: ListingLimit | null
   top_provider?: ListingTopProvider | null
+  /** Input modalities OpenRouter-compatible gateways nest under each entry. */
+  architecture?: ListingArchitecture | null
+  /** Flat spelling of the same disclosure some gateways use. */
+  input_modalities?: unknown
+  /** pi-ai's own field name for the modalities a model accepts. */
+  modalities?: unknown
   /** Declared reasoning levels in the configuration shape, when the gateway discloses them. */
   reasoningEfforts?: unknown
   /** pi-ai's own spelling of the same disclosure, when the gateway uses it. */
@@ -133,6 +144,43 @@ function listingReasoning(entry: ListingEntry | null): false | Record<string, st
     return Object.keys(efforts).length === 0 ? undefined : efforts
   }
   return entry?.reasoning === false ? false : undefined
+}
+
+/**
+ * Read a listing entry's disclosed input modalities into the candidate shape.
+ * The disclosure is untrusted and often wider than this harness's vocabulary —
+ * `file` is a common OpenRouter value no pi-ai profile may declare — so values
+ * outside {@link MODALITIES} are dropped rather than carried into a draft the
+ * adapter's schema would refuse.
+ *
+ * Only an array disclosure counts. A gateway stating modalities as one
+ * `architecture.modality` string such as `text+image->text` is left to hand
+ * entry: its grammar is a vendor convention, and guessing at it would write
+ * claims the endpoint never made in a field the user is about to save.
+ * @param entry - one listing entry, which may be `null` when a row is not object-valued.
+ * @returns the disclosed modalities in pi-ai's canonical order, or nothing
+ *   when the entry disclosed none this build recognizes.
+ */
+function listingModalities(entry: ListingEntry | null): ModelModality[] | undefined {
+  const raw = entry?.architecture?.input_modalities ?? entry?.input_modalities ?? entry?.modalities
+  if (!Array.isArray(raw)) return undefined
+  const declared = MODALITIES.filter(modality => raw.includes(modality))
+  return declared.length === 0 ? undefined : declared
+}
+
+/**
+ * Normalize one installed catalog model's accepted modalities into the
+ * candidate shape, so a candidate adopted from the catalog declares what the
+ * catalog records instead of leaving the route's `defaultInput` in force.
+ * Without it a catalog vision model arrives text-only, and the runtime then
+ * replaces that model's images with text placeholders.
+ * @param model - an installed catalog model descriptor.
+ * @returns an `inputModalities` candidate field, or nothing when the catalog
+ *   declares none this build recognizes.
+ */
+function modalityCandidate(model: Model<Api>): { inputModalities?: ModelModality[] } {
+  const declared = MODALITIES.filter(modality => model.input.includes(modality))
+  return declared.length === 0 ? {} : { inputModalities: declared }
 }
 
 /**
@@ -289,11 +337,13 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
       entry?.top_provider?.max_completion_tokens,
     )
     const reasoningEfforts = listingReasoning(entry)
+    const inputModalities = listingModalities(entry)
     models.push({
       id,
       name,
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
+      ...inputModalities === undefined ? {} : { inputModalities },
       ...reasoningEfforts === undefined ? {} : { reasoningEfforts },
     })
   }
@@ -351,6 +401,7 @@ export async function discoverModels(
         name: model.name,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
+        ...modalityCandidate(model),
         ...reasoningCandidate(model),
       }))
     }

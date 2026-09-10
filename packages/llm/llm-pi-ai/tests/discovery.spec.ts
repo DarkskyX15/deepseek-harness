@@ -85,6 +85,10 @@ describe('catalog-route model discovery', () => {
     expect(models.map(model => model.id).sort())
       .toEqual(getBuiltinModels('deepseek').map(model => model.id).sort())
     expect(models.every(model => (model.contextWindow ?? 0) > 0 && (model.maxTokens ?? 0) > 0)).toBe(true)
+    // Modalities ride along: a candidate answers what the catalog records
+    // instead of leaving the route's `defaultInput` in force.
+    expect(models.map(model => model.inputModalities))
+      .toEqual(getBuiltinModels('deepseek').map(model => [...model.input]))
     expect(server.paths).toEqual([])
   })
 
@@ -103,6 +107,19 @@ describe('catalog-route model discovery', () => {
     // The seam refuses a request naming neither, so the module's own guard for
     // that shape is only reachable by calling it directly.
     await expect(discoverModels({})).rejects.toThrow(/set a baseURL/)
+  })
+
+  it('carries a catalog vision model\'s modalities into its candidate', async () => {
+    const vision = getBuiltinModels('anthropic').find(model => model.input.includes('image'))
+    if (vision === undefined) throw new Error('the installed catalog ships no anthropic vision model')
+    const ctx = await harness()
+
+    const models = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'anthropic' })
+
+    // Adopting this candidate has to keep the image input: a route that falls
+    // back to `defaultInput` serves the model text-only, and the runtime then
+    // replaces its images with placeholders.
+    expect(models.find(model => model.id === vision.id)?.inputModalities).toEqual([...vision.input])
   })
 })
 
@@ -133,6 +150,35 @@ describe('draft-provider model discovery', () => {
     expect(server.paths).toEqual(['/v1/models'])
     expect(server.headers[0]?.authorization).toBe('Bearer probe-key')
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+  })
+
+  it('reads disclosed input modalities, dropping the ones no profile may declare', async () => {
+    const server = await listingServer({
+      body: JSON.stringify({
+        data: [
+          { id: 'acme-vision', architecture: { input_modalities: ['text', 'image', 'file'] } },
+          { id: 'acme-flat', input_modalities: ['image', 'text'] },
+          { id: 'acme-pi', modalities: ['text'] },
+          { id: 'acme-alien', modalities: ['audio'] },
+          { id: 'acme-spelled', architecture: { modality: 'text+image->text' } },
+        ],
+      }),
+    })
+    const ctx = await harness()
+
+    const models = await ctx.llm.discoverModels('llm-pi-ai', { baseURL: `${server.url}/v1`, apiKey: 'probe-key' })
+
+    // `file` is a real OpenRouter value no pi-ai profile may declare, and the
+    // order is the vocabulary's rather than the endpoint's. A gateway that
+    // states modalities only as one `architecture.modality` string discloses
+    // nothing this build reads, so its row keeps hand entry.
+    expect(models.map(model => [model.id, model.inputModalities])).toEqual([
+      ['acme-vision', ['text', 'image']],
+      ['acme-flat', ['text', 'image']],
+      ['acme-pi', ['text']],
+      ['acme-alien', undefined],
+      ['acme-spelled', undefined],
+    ])
   })
 
   it('reads an enriched models map using route ids and nested capacities', async () => {
@@ -496,10 +542,29 @@ const RECORDED_LISTINGS = [
     file: 'openrouter-2026-09-02.json',
     api: 'openai-completions',
     models: [
-      { id: 'anthropic/claude-fable-5.1', name: 'Anthropic: Claude Fable 5.1', contextWindow: 1_000_000, maxTokens: 128_000 },
+      // Only the modalities a pi-ai profile may declare survive the router's
+      // disclosure: its `file`, `audio`, and `video` values are dropped.
+      {
+        id: 'anthropic/claude-fable-5.1',
+        name: 'Anthropic: Claude Fable 5.1',
+        contextWindow: 1_000_000,
+        maxTokens: 128_000,
+        inputModalities: ['text', 'image'],
+      },
       // The router's own aggregate route reports no completion cap.
-      { id: 'openrouter/auto-beta', name: 'Auto Router (Beta)', contextWindow: 2_000_000 },
-      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek: DeepSeek V4 Flash 0423', contextWindow: 1_048_576, maxTokens: 384_000 },
+      {
+        id: 'openrouter/auto-beta',
+        name: 'Auto Router (Beta)',
+        contextWindow: 2_000_000,
+        inputModalities: ['text', 'image'],
+      },
+      {
+        id: 'deepseek/deepseek-v4-flash',
+        name: 'DeepSeek: DeepSeek V4 Flash 0423',
+        contextWindow: 1_048_576,
+        maxTokens: 384_000,
+        inputModalities: ['text'],
+      },
     ],
   },
   {

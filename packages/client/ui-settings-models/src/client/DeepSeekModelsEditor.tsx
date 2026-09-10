@@ -17,7 +17,7 @@ import styles from './ModelsSection.module.css'
 export type DeepSeekModelDraft = Record<string, unknown>
 
 /** The catalog fields this editor writes. */
-type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens'
+type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens' | 'inputModalities'
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
 type CapacityField = 'contextWindow' | 'maxTokens'
@@ -29,6 +29,35 @@ type CapacityField = 'contextWindow' | 'maxTokens'
  * adapter's own gates stay the final authority.
  */
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/**
+ * The request modalities this build's editors may declare, in the adapter
+ * vocabulary's order. Mirrors the Host's `ModelModalityMap` for the same
+ * reason as {@link THINKING_LEVELS}: a Client package cannot import a Host
+ * adapter, and the adapter's own schema stays the final judge.
+ */
+export const MODALITIES = ['text', 'image'] as const
+
+/**
+ * The declared input modalities of one model entry, or undefined when it
+ * states none. The field name is the adapter's own spelling — a pi-ai profile
+ * entry uses `input`, the DeepSeek catalog uses `inputModalities` — so the
+ * caller names the one its form writes. A list carrying anything but strings
+ * reads as undeclared here: the adapters' schemas refuse such a value at save
+ * time, and {@link validateInputModalities} names it for the DeepSeek editor.
+ * @param model - one drafted model entry.
+ * @param field - the modality field name that adapter reads.
+ * @returns the declared modalities, or undefined.
+ */
+export function inputModalitiesOf(
+  model: DeepSeekModelDraft,
+  field: 'input' | 'inputModalities',
+): readonly string[] | undefined {
+  const value = model[field]
+  if (!Array.isArray(value)) return undefined
+  const declared = value.filter((entry): entry is string => typeof entry === 'string')
+  return declared.length === value.length ? declared : undefined
+}
 
 /** A configured `reasoningEfforts` dict, when the row carries one. */
 export type ThinkingEfforts = Partial<Record<typeof THINKING_LEVELS[number], string | null>>
@@ -71,6 +100,25 @@ export type ThinkingEffortsError =
   | 'thinkingLevelNeedsOne'
   | 'thinkingLevelWireRequired'
   | 'thinkingLevelUnknown'
+
+/** Copy keys for the field-level input-modality failures this card may render. */
+export type ModelModalitiesError = 'modelModalitiesInvalid'
+
+/**
+ * Validate an `inputModalities` value the way the DeepSeek adapter's catalog
+ * schema will: a non-empty list of unique `text`/`image` entries. An absent
+ * value is valid — the schema defaults it to `text` — so clearing every
+ * checkbox is a legal edit, not a failure.
+ * @param value - the configured value, or undefined when the entry states none.
+ * @returns the copy key for a field-level failure, or undefined to allow submit.
+ */
+export function validateInputModalities(value: unknown): ModelModalitiesError | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0) return 'modelModalitiesInvalid'
+  const known: readonly unknown[] = MODALITIES
+  if (!value.every(entry => known.includes(entry))) return 'modelModalitiesInvalid'
+  return new Set(value).size === value.length ? undefined : 'modelModalitiesInvalid'
+}
 
 /** Row index encoded in an editing-buffer key. */
 function rowOf(key: string): number {
@@ -124,7 +172,7 @@ export interface DeepSeekModelsValidationFailure {
   index: number
   /** Message key owned by the Models settings section. */
   key: 'modelIdRequired' | 'modelIdDuplicate' | 'modelNameInvalid' | 'modelContextInvalid'
-  | 'modelMaxTokensInvalid' | ThinkingEffortsError
+  | 'modelMaxTokensInvalid' | ThinkingEffortsError | ModelModalitiesError
 }
 
 /** Convert a schema-validated catalog value into records without dropping hidden fields. */
@@ -173,8 +221,75 @@ export function validateDeepSeekModels(value: unknown): DeepSeekModelsValidation
       const thinkingError = validateReasoningEfforts(reasoningEfforts)
       if (thinkingError !== undefined) return { index, key: thinkingError }
     }
+    const inputModalities = model['inputModalities']
+    if (inputModalities !== undefined) {
+      const modalityError = validateInputModalities(inputModalities)
+      if (modalityError !== undefined) return { index, key: modalityError }
+    }
   }
   return undefined
+}
+
+/**
+ * What a request carries while a row declares no modalities. Both adapters
+ * default an undeclared entry to `text` — pi-ai through its route
+ * `defaultInput`, the DeepSeek catalog through its schema default — which is
+ * why the control shows it as ticked.
+ */
+const DEFAULT_INPUT: readonly string[] = ['text']
+
+/**
+ * Per-model input-modality control: one checkbox per modality this build's
+ * vocabulary names. An undeclared row is shown as {@link DEFAULT_INPUT}, so
+ * ticking image adds to the text the request already carries instead of
+ * replacing it. Writes land as the whole list, and clearing every box removes
+ * the field rather than storing an empty list — pi-ai reads `[]` as "accepts
+ * nothing" and the DeepSeek schema refuses it, while an absent field is the
+ * one spelling both take as "no claim". The adapters' own gates stay the
+ * final judge.
+ * @param props - the row's declared list, write gate, copy, and change sink.
+ * @returns the modality control.
+ */
+export function ModalityEditor(props: {
+  /** The row's declared modalities, or undefined when it states none. */
+  value: readonly string[] | undefined
+  /** One-based model position, so every checkbox of every open row stays addressable. */
+  position: number
+  /** Disable every control (read-only deployment or a pending write). */
+  disabled: boolean
+  /** Section copy. */
+  t: (key: keyof typeof en) => string
+  /** Write the whole list, or undefined to leave the entry undeclared. */
+  onChange: (value: string[] | undefined) => void
+}): ReactNode {
+  const { value, position, disabled, t, onChange } = props
+  const declared = value ?? DEFAULT_INPUT
+  const toggle = (modality: (typeof MODALITIES)[number]): void => {
+    const picked = new Set(declared)
+    if (!picked.delete(modality)) picked.add(modality)
+    const next = MODALITIES.filter(entry => picked.has(entry))
+    onChange(next.length === 0 ? undefined : next)
+  }
+  return (
+    <div className={styles['choiceField']}>
+      <span className={styles['modelFieldLabel']}>{t('modelModalities')}</span>
+      <div className={styles['choiceGrid']}>
+        {MODALITIES.map(modality => (
+          <label className={styles['choiceLine']} key={modality}>
+            <input
+              type="checkbox"
+              checked={declared.includes(modality)}
+              disabled={disabled}
+              aria-label={`${t('modelModalities')} ${t(`modality.${modality}`)} ${String(position)}`}
+              onChange={() => { toggle(modality) }}
+            />
+            <span className={styles['modelFieldLabel']}>{t(`modality.${modality}`)}</span>
+          </label>
+        ))}
+      </div>
+      <p className={styles['advancedHint']}>{t('modalityHint')}</p>
+    </div>
+  )
 }
 
 /** Props of {@link DeepSeekModelsEditor}. */
@@ -398,6 +513,13 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                     <div className={styles['modelAdvanced']}>
                       {capacityField(model, index, 'contextWindow', props.defaultContextWindow)}
                       {capacityField(model, index, 'maxTokens', props.defaultMaxTokens)}
+                      <ModalityEditor
+                        value={inputModalitiesOf(model, 'inputModalities')}
+                        position={index + 1}
+                        disabled={props.disabled}
+                        t={props.t}
+                        onChange={(inputModalities) => { update(index, 'inputModalities', inputModalities) }}
+                      />
                     </div>
                   )
                   : null}
