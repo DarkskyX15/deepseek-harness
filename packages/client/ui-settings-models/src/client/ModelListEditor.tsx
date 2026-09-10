@@ -216,9 +216,9 @@ function ThinkingLevelsEditor(props: {
     return level === 'off' && value === null ? '' : typeof value === 'string' ? value : ''
   }
   return (
-    <div className={styles['modelField']}>
+    <div className={styles['thinkingField']}>
       <span className={styles['modelFieldLabel']}>{t('thinkingLevels')}</span>
-      <label className={styles['modelField']}>
+      <label className={styles['thinkingSwitch']}>
         <input
           type="checkbox"
           checked={thinking}
@@ -230,9 +230,9 @@ function ThinkingLevelsEditor(props: {
       </label>
       {thinking
         ? (
-          <div className={styles['modelField']}>
+          <div className={styles['thinkingLevels']}>
             {THINKING_LEVELS.map(level => (
-              <label className={styles['modelField']} key={level}>
+              <label className={styles['thinkingLevel']} key={level}>
                 <input
                   type="checkbox"
                   checked={level in efforts}
@@ -242,7 +242,7 @@ function ThinkingLevelsEditor(props: {
                 />
                 <span className={styles['modelFieldLabel']}>{t(`thinkingLevel.${level}`)}</span>
                 <input
-                  className={styles['input']}
+                  className={`${styles['input']} ${styles['thinkingWire']}`}
                   type="text"
                   value={wireText(level)}
                   placeholder={level === 'off' ? t('thinkingOffWire') : t('thinkingWirePlaceholder')}
@@ -478,7 +478,11 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               onChange={(event) => { patch(index, { name: event.target.value === '' ? undefined : event.target.value }) }}
             />
             {typeof model['reasoningEfforts'] !== 'undefined'
-              ? <span className={styles['rowTag']}>{thinkingSummary(model, t)}</span>
+              ? (
+                <span className={styles['rowTag']} title={thinkingSummary(model, t)}>
+                  {thinkingSummary(model, t)}
+                </span>
+              )
               : null}
             <button
               type="button"
