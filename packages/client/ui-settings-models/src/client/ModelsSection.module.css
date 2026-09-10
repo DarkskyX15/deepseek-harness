@@ -566,7 +566,7 @@
    options read as aligned rows instead of a ragged wrap. */
 .thinkingLevels {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 6px 12px;
 }
 
