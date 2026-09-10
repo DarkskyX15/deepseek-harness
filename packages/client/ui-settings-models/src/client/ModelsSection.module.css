@@ -561,29 +561,30 @@
   cursor: pointer;
 }
 
+/* Level lines in a grid of equal columns: every checkbox starts at the same
+   column, and every wire field stretches to its cell's right edge, so the
+   options read as aligned rows instead of a ragged wrap. */
 .thinkingLevels {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 6px 12px;
 }
 
-/* One level line: its checkbox, name, and a shrinkable wire field share a
-   row, so a long level name squeezes the wire cell instead of overflowing.
-   Lines sit at content width and wrap as a set, never stretching to fill. */
+/* One level line: its checkbox, name, and a wire field that stretches to the
+   grid cell's end share a row, so a long level name squeezes the wire cell
+   instead of overflowing. */
 .thinkingLevel {
-  display: inline-flex;
-  flex: 0 1 auto;
+  display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   cursor: pointer;
 }
 
-/* The wire spelling field: a compact cell beside its level name. It flexes
-   with the level line — narrower than a full row control, and never wider
-   than what a spelling needs. */
+/* The wire spelling field: fills the cell beside its level name so all wire
+   fields align on the grid's column edge. */
 .thinkingWire {
-  flex: 0 1 96px;
+  flex: 1 1 auto;
   min-width: 48px;
   width: auto;
 }
