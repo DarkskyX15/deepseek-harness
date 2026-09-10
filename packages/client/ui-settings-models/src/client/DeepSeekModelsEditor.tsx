@@ -347,7 +347,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
               <div className={styles['modelEntry']} key={index}>
                 <div className={styles['modelRow']}>
                   <input
-                    className={styles['input']}
+                    className={`${styles['input']} ${styles['modelIdInput']}`}
                     type="text"
                     value={typeof model['id'] === 'string' ? model['id'] : ''}
                     placeholder={props.t('modelId')}
@@ -362,7 +362,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                     }}
                   />
                   <input
-                    className={styles['input']}
+                    className={`${styles['input']} ${styles['modelNameInput']}`}
                     type="text"
                     value={typeof model['name'] === 'string' ? model['name'] : ''}
                     placeholder={props.t('modelName')}

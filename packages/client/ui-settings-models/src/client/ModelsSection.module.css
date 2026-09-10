@@ -85,11 +85,12 @@
    the secondary label tone, so it never competes with the row's own title. It
    sits inside `rowIdentity` with the credential dot, which is what keeps it
    beside the name rather than drifting toward the actions. On model rows it
-   occupies its own grid column, so a long level list truncates instead of
-   wrapping the row's delete control onto the next line. */
+   is a flex item that shrinks before the editable cells do: a long level list
+   truncates instead of wrapping the row's delete control onto the next line. */
 .rowTag {
-  flex: none;
+  flex: 0 1 auto;
   max-width: 140px;
+  min-width: 0;
   padding: 1px 6px;
   border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: 4px;
@@ -463,17 +464,35 @@
 }
 
 .modelRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto;
+  display: flex;
   align-items: center;
   gap: 6px;
 }
 
+/* The two editable cells share the row's free space so a tag of any width,
+   and the fixed icon buttons, never wrap: the id keeps the lead, the name
+   flexes, and each input shrinks before the controls do. */
+.modelIdInput,
+.modelNameInput {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.modelIdInput {
+  flex-grow: 1.4;
+}
+
+.modelNameInput {
+  flex-grow: 1;
+}
+
 /* Square, label-free affordances: the row's own inputs carry the meaning, so
-   the actions stay glyphs and announce themselves through aria-label. */
+   the actions stay glyphs and announce themselves through aria-label. Fixed
+   cells in the flex model row: never shrink, never grow. */
 .iconButton {
   box-sizing: border-box;
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -503,7 +522,10 @@
 
 .modelAdvanced {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  /* The disclosure holds exactly the two capacity fields plus the full-width
+     thinking editor, so two equal columns fill the row instead of letting
+     `auto-fit` sparse-grid one field per cell. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding: 8px 4px 2px;
 }
@@ -542,21 +564,28 @@
 .thinkingLevels {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 6px 12px;
 }
 
+/* One level line: its checkbox, name, and a shrinkable wire field share a
+   row, so a long level name squeezes the wire cell instead of overflowing.
+   Lines sit at content width and wrap as a set, never stretching to fill. */
 .thinkingLevel {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   cursor: pointer;
 }
 
-/* The wire spelling field: a compact cell beside its level name, not a
-   full-width row control. */
+/* The wire spelling field: a compact cell beside its level name. It flexes
+   with the level line — narrower than a full row control, and never wider
+   than what a spelling needs. */
 .thinkingWire {
-  width: 96px;
-  flex: none;
+  flex: 0 1 96px;
+  min-width: 48px;
+  width: auto;
 }
 
 .modelEmpty {

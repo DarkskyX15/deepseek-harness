@@ -196,11 +196,11 @@ function ThinkingLevelsEditor(props: {
       const remaining = Object.fromEntries(
         Object.entries(next).filter(([key]) => key !== level),
       ) as ThinkingEfforts
-      // Dropping the last level below off is indistinguishable from "not a
-      // thinking model", which is how the adapter reads `false`; empty dicts
-      // are refused, so the switch has to send that instead of `{}`.
-      const enabled = Object.keys(remaining).filter(key => key !== 'off')
-      onChange(enabled.length === 0 ? false : remaining)
+      // The switch keeps the editor open: closing is the Thinking-model
+      // switch's job, and turning a level off must never discard the wire
+      // spellings the user is still entering. The shared validator reports
+      // "enable at least one level" while none beyond off is checked.
+      onChange(remaining)
     } else {
       next[level] = level === 'off' ? null : level
       onChange(next)
@@ -460,7 +460,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         <div key={index} className={styles['modelEntry']}>
           <div className={styles['modelRow']}>
             <input
-              className={styles['input']}
+              className={`${styles['input']} ${styles['modelIdInput']}`}
               type="text"
               value={textOf(model, 'id')}
               placeholder={t('modelId')}
@@ -469,7 +469,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               onChange={(event) => { patch(index, { id: event.target.value }) }}
             />
             <input
-              className={styles['input']}
+              className={`${styles['input']} ${styles['modelNameInput']}`}
               type="text"
               value={textOf(model, 'name')}
               placeholder={t('modelName')}
