@@ -22,6 +22,56 @@ type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens'
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
 type CapacityField = 'contextWindow' | 'maxTokens'
 
+/**
+ * The seven selectable thinking levels, in escalation order. This mirrors the
+ * adapter's `THINKING_LEVELS` (pi-ai's canonical order); the client package
+ * cannot import the Host adapter, so the spellings are repeated here and the
+ * adapter's own gates stay the final authority.
+ */
+export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/** A configured `reasoningEfforts` dict, when the row carries one. */
+export type ThinkingEfforts = Partial<Record<typeof THINKING_LEVELS[number], string | null>>
+
+/** The configured thinking levels of one model entry, or undefined when untouched. */
+export function reasoningEffortsOf(model: DeepSeekModelDraft): false | ThinkingEfforts | undefined {
+  const value = model['reasoningEfforts']
+  if (value === false) return false
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value
+  }
+  return undefined
+}
+
+/**
+ * Validate a `reasoningEfforts` value the way the adapter's
+ * `resolveModelReasoning` will: `false` (non-reasoning) or a level dict with
+ * at least one non-off level; non-off levels need a non-empty wire string;
+ * off may be null (supported, send nothing) or a non-empty string.
+ * @param value - the configured value, or undefined when untouched.
+ * @returns the copy key for a field-level failure, or undefined to allow submit.
+ */
+export function validateReasoningEfforts(value: unknown): ThinkingEffortsError | undefined {
+  if (value === false || value === undefined) return undefined
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'thinkingLevelInvalid'
+  const entries = Object.entries(value)
+  if (entries.length === 0 || !entries.some(([level]) => level !== 'off')) return 'thinkingLevelNeedsOne'
+  for (const [level, wire] of entries) {
+    if (!(THINKING_LEVELS as readonly string[]).includes(level)) return 'thinkingLevelUnknown'
+    if (level === 'off') {
+      if (wire !== null && (typeof wire !== 'string' || wire.length === 0)) return 'thinkingLevelWireRequired'
+    } else if (typeof wire !== 'string' || wire.length === 0) return 'thinkingLevelWireRequired'
+  }
+  return undefined
+}
+
+/** Copy keys for the field-level `reasoningEfforts` failures this card may render. */
+export type ThinkingEffortsError =
+  | 'thinkingLevelInvalid'
+  | 'thinkingLevelNeedsOne'
+  | 'thinkingLevelWireRequired'
+  | 'thinkingLevelUnknown'
+
 /** Row index encoded in an editing-buffer key. */
 function rowOf(key: string): number {
   return Number(key.slice(0, key.indexOf(':')))
@@ -74,7 +124,7 @@ export interface DeepSeekModelsValidationFailure {
   index: number
   /** Message key owned by the Models settings section. */
   key: 'modelIdRequired' | 'modelIdDuplicate' | 'modelNameInvalid' | 'modelContextInvalid'
-  | 'modelMaxTokensInvalid'
+  | 'modelMaxTokensInvalid' | ThinkingEffortsError
 }
 
 /** Convert a schema-validated catalog value into records without dropping hidden fields. */
@@ -117,6 +167,11 @@ export function validateDeepSeekModels(value: unknown): DeepSeekModelsValidation
     if (maxTokens !== undefined
       && (typeof maxTokens !== 'number' || !Number.isInteger(maxTokens) || maxTokens <= 0)) {
       return { index, key: 'modelMaxTokensInvalid' }
+    }
+    const reasoningEfforts = model['reasoningEfforts']
+    if (reasoningEfforts !== undefined) {
+      const thinkingError = validateReasoningEfforts(reasoningEfforts)
+      if (thinkingError !== undefined) return { index, key: thinkingError }
     }
   }
   return undefined

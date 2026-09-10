@@ -18,9 +18,9 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
-import type { ModelsOperations } from './operations.ts'
+import { formatCapacity, parseCapacity, reasoningEffortsOf, THINKING_LEVELS, type ThinkingEfforts } from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
+import type { ModelsOperations } from './operations.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -41,6 +41,9 @@ function numberOf(model: ModelDraft, key: string): number | undefined {
   const value = model[key]
   return typeof value === 'number' ? value : undefined
 }
+
+/** One field value a row edit may write: the scalar fields plus the thinking dict. */
+type ModelPatchValue = string | number | boolean | ThinkingEfforts | undefined
 
 /** What an interrogation needs, taken from the live form. */
 export interface ProbeTarget {
@@ -141,14 +144,120 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
-/** Adopt a candidate, keeping whatever capacities the provider disclosed. */
+/** Adopt a candidate, keeping whatever capacities and reasoning levels the provider disclosed. */
 function adopt(candidate: LlmDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
     ...candidate.name === undefined ? {} : { name: candidate.name },
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
+    ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: candidate.reasoningEfforts },
   }
+}
+
+/** Short label for one model's declared thinking capability, shown on its row. */
+function thinkingSummary(model: ModelDraft, t: (key: keyof typeof en) => string): string {
+  const efforts = reasoningEffortsOf(model)
+  if (efforts === false || typeof efforts !== 'object') return t('noThinkingLevels')
+  const enabled = THINKING_LEVELS.filter(level => level in efforts)
+  return enabled.length === 0 ? t('noThinkingLevels') : enabled.map(level => t(`thinkingLevel.${level}`)).join(' · ')
+}
+
+/**
+ * Per-model "available thinking levels" editor: a master Thinking-model
+ * switch (`false` ↔ a level dict) plus one row per level with its wire
+ * spelling. Writes land through {@link patch} as the whole `reasoningEfforts`
+ * value, so the adapter's `resolveModelReasoning` materializes exactly what
+ * the user sees; the adapter's own gates stay the final judge.
+ * @param props - the drafted model entry, write gate, copy, and change sink.
+ * @returns the thinking-levels control.
+ */
+function ThinkingLevelsEditor(props: {
+  /** The drafted model entry whose `reasoningEfforts` this control edits. */
+  model: ModelDraft
+  /** Disable every control (read-only deployment or a pending write). */
+  disabled: boolean
+  /** Section copy. */
+  t: (key: keyof typeof en) => string
+  /** Write the whole value; a row edit is one replace. */
+  onChange: (value: false | ThinkingEfforts) => void
+}): ReactNode {
+  const { model, disabled, t, onChange } = props
+  const efforts = reasoningEffortsOf(model)
+  const thinking = typeof efforts === 'object'
+  const toggleThinking = (): void => {
+    onChange(thinking ? false : { off: null })
+  }
+  const toggleLevel = (level: (typeof THINKING_LEVELS)[number]): void => {
+    const next: ThinkingEfforts = thinking ? { ...efforts } : { off: null }
+    if (level in next) {
+      // Rebuilt rather than deleted: the level key is a computed property,
+      // and the rows that remain are exactly the ones still offered.
+      const remaining = Object.fromEntries(
+        Object.entries(next).filter(([key]) => key !== level),
+      ) as ThinkingEfforts
+      // Dropping the last level below off is indistinguishable from "not a
+      // thinking model", which is how the adapter reads `false`; empty dicts
+      // are refused, so the switch has to send that instead of `{}`.
+      const enabled = Object.keys(remaining).filter(key => key !== 'off')
+      onChange(enabled.length === 0 ? false : remaining)
+    } else {
+      next[level] = level === 'off' ? null : level
+      onChange(next)
+    }
+  }
+  const editWire = (level: (typeof THINKING_LEVELS)[number], text: string): void => {
+    const next: ThinkingEfforts = thinking ? { ...efforts } : { off: null }
+    next[level] = level === 'off' && text.length === 0 ? null : text
+    onChange(next)
+  }
+  const wireText = (level: (typeof THINKING_LEVELS)[number]): string => {
+    const value = thinking ? efforts[level] : undefined
+    return level === 'off' && value === null ? '' : typeof value === 'string' ? value : ''
+  }
+  return (
+    <div className={styles['modelField']}>
+      <span className={styles['modelFieldLabel']}>{t('thinkingLevels')}</span>
+      <label className={styles['modelField']}>
+        <input
+          type="checkbox"
+          checked={thinking}
+          disabled={disabled}
+          aria-label={t('thinkingModel')}
+          onChange={toggleThinking}
+        />
+        <span className={styles['modelFieldLabel']}>{t('thinkingModel')}</span>
+      </label>
+      {thinking
+        ? (
+          <div className={styles['modelField']}>
+            {THINKING_LEVELS.map(level => (
+              <label className={styles['modelField']} key={level}>
+                <input
+                  type="checkbox"
+                  checked={level in efforts}
+                  disabled={disabled}
+                  aria-label={`${t('thinkingLevels')} ${t(`thinkingLevel.${level}`)}`}
+                  onChange={() => { toggleLevel(level) }}
+                />
+                <span className={styles['modelFieldLabel']}>{t(`thinkingLevel.${level}`)}</span>
+                <input
+                  className={styles['input']}
+                  type="text"
+                  value={wireText(level)}
+                  placeholder={level === 'off' ? t('thinkingOffWire') : t('thinkingWirePlaceholder')}
+                  aria-label={`${t(`thinkingLevel.${level}`)} ${t('thinkingWire')}`}
+                  disabled={disabled || !(level in efforts)}
+                  onChange={(event) => { editWire(level, event.target.value) }}
+                />
+              </label>
+            ))}
+          </div>
+        )
+        : null}
+      <p className={styles['advancedHint']}>{t('thinkingLevelHint')}</p>
+    </div>
+  )
 }
 
 /**
@@ -209,7 +318,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
-  const patch = (index: number, next: Record<string, string | number | undefined>): void => {
+  const patch = (index: number, next: Record<string, ModelPatchValue>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
       // Rebuilt rather than spread over: an emptied optional field has to leave
@@ -368,6 +477,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               disabled={disabled}
               onChange={(event) => { patch(index, { name: event.target.value === '' ? undefined : event.target.value }) }}
             />
+            {typeof model['reasoningEfforts'] !== 'undefined'
+              ? <span className={styles['rowTag']}>{thinkingSummary(model, t)}</span>
+              : null}
             <button
               type="button"
               className={styles['iconButton']}
@@ -433,6 +545,12 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
                   />
                 </label>
+                <ThinkingLevelsEditor
+                  model={model}
+                  disabled={disabled}
+                  t={t}
+                  onChange={(reasoningEfforts) => { patch(index, { reasoningEfforts }) }}
+                />
               </div>
             )
             : null}

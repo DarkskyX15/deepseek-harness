@@ -25,7 +25,8 @@
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels } from './catalog.ts'
+import type { Api, Model } from '@earendil-works/pi-ai'
+import { THINKING_LEVELS, catalogModels } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -85,6 +86,12 @@ interface ListingEntry {
   maxTokens?: unknown
   limit?: ListingLimit | null
   top_provider?: ListingTopProvider | null
+  /** Declared reasoning levels in the configuration shape, when the gateway discloses them. */
+  reasoningEfforts?: unknown
+  /** pi-ai's own spelling of the same disclosure, when the gateway uses it. */
+  thinking_levels?: unknown
+  /** Non-reasoning flag some gateway listings carry. */
+  reasoning?: unknown
 }
 
 /** A positive integer field of a listing entry, or `undefined` when absent or unusable. */
@@ -101,6 +108,68 @@ function label(...candidates: readonly unknown[]): string | undefined {
     if (typeof candidate === 'string' && candidate.length > 0) return candidate
   }
   return undefined
+}
+
+/**
+ * Read a listing entry's disclosed reasoning capability into the
+ * configuration `reasoningEfforts` shape. The adapter's
+ * `resolveModelReasoning` stays the final gate: this only keeps the levels a
+ * gateway actually names, in the spellings adoption writes. An unrecognizable
+ * value, an empty dict (which the adapter would refuse as "declares
+ * nothing"), and a missing disclosure all stay absent so a candidate never
+ * carries a value its profile cannot serve.
+ * @param entry - one listing entry, which may be `null` when a row is not object-valued.
+ * @returns the declared levels, `false` for a stated non-reasoning model, or
+ *   nothing when the gateway disclosed neither.
+ */
+function listingReasoning(entry: ListingEntry | null): false | Record<string, string | null> | undefined {
+  const raw = entry?.reasoningEfforts ?? entry?.thinking_levels
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+    const efforts: Record<string, string | null> = {}
+    for (const [level, wire] of Object.entries(raw)) {
+      if (wire === null) efforts[level] = null
+      else if (typeof wire === 'string') efforts[level] = wire
+    }
+    return Object.keys(efforts).length === 0 ? undefined : efforts
+  }
+  return entry?.reasoning === false ? false : undefined
+}
+
+/**
+ * Normalize one installed catalog model's reasoning capability into the
+ * configuration `reasoningEfforts` shape, so a discovery candidate adopted
+ * into a profile keeps the levels the catalog declares.
+ *
+ * pi-ai's `thinkingLevelMap` semantics differ from the config dict: an
+ * absent key means "supported, send the raw level" for the five base levels
+ * but "unsupported" for `xhigh`/`max`, while a `null` value means
+ * "unsupported" everywhere. The config dict inverts part of that — `off: null`
+ * is "supported, send nothing", and a non-off level with a `null` value is
+ * rejected — so the mapping below states each level explicitly:
+ *   - `null` → unsupported → key left absent;
+ *   - absent → `off` gets `null` (send nothing), `xhigh`/`max` stay absent,
+ *     and the remaining base levels get themselves as the wire spelling;
+ *   - a string → carried as the wire spelling.
+ * @param model - an installed catalog model descriptor.
+ * @returns a `reasoningEfforts` candidate field, or nothing when the model is
+ *   not a reasoning model or supports no selectable level.
+ */
+function reasoningCandidate(
+  model: Model<Api>,
+): { reasoningEfforts?: false | Record<string, string | null> } {
+  if (!model.reasoning) return {}
+  const map = model.thinkingLevelMap
+  const efforts: Record<string, string | null> = {}
+  for (const level of THINKING_LEVELS) {
+    const wire = map?.[level]
+    if (wire === null) continue
+    if (wire === undefined) {
+      if (level === 'off') efforts[level] = null
+      else if (level === 'xhigh' || level === 'max') continue
+      else efforts[level] = level
+    } else efforts[level] = wire
+  }
+  return Object.keys(efforts).length === 0 ? {} : { reasoningEfforts: efforts }
 }
 
 /**
@@ -219,11 +288,13 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
       entry?.limit?.output,
       entry?.top_provider?.max_completion_tokens,
     )
+    const reasoningEfforts = listingReasoning(entry)
     models.push({
       id,
       name,
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
+      ...reasoningEfforts === undefined ? {} : { reasoningEfforts },
     })
   }
   return models
@@ -280,6 +351,7 @@ export async function discoverModels(
         name: model.name,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
+        ...reasoningCandidate(model),
       }))
     }
   }

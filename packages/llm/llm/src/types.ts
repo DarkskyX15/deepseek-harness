@@ -295,6 +295,17 @@ export interface LlmDiscoveredModel {
   contextWindow?: number
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
+  /**
+   * Reasoning levels the endpoint discloses, in the same shape adapter
+   * configuration accepts: `false` declares a non-reasoning model, and a
+   * dict maps each offered level to its wire spelling (`null` spells "send
+   * nothing" for `off`; a `null` for another level is refused by the
+   * adapter). Absent means the endpoint said nothing — the adopting surface
+   * leaves the destination entry untouched. (The config type uses `Partial`
+   * for the same shape; Typert Remote boundaries cannot carry mapped types,
+   * so this side spells the dict as an index signature.)
+   */
+  reasoningEfforts?: false | Record<string, string | null>
 }
 
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
