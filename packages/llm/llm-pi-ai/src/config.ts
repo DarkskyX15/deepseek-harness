@@ -147,7 +147,13 @@ export interface PiAiProviderProfile {
    * to answer instead.
    */
   defaultInput?: PiAiModality[]
-  /** Provider request headers, validated against Fetch when the profile resolves; Harness attribution wins reserved names. */
+  /**
+   * Provider request headers, validated against Fetch when the profile
+   * resolves; Harness attribution wins reserved names. Values support request-
+   * time template substitution: `${sessionId}` (this conversation's stable
+   * SessionId), `${provider}`, and `${model}`; unknown tokens stay literal so
+   * a typo is visible on the wire instead of silently emptying.
+   */
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
   reasoning?: ModelThinkingLevel

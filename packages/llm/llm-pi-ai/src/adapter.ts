@@ -212,6 +212,34 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
 }
 
 /**
+ * Resolve template tokens in configured header values at request time.
+ *
+ * Supports `${sessionId}` (this conversation's stable SessionId from
+ * `options.sessionId`), `${provider}`, and `${model}`. Unknown tokens stay
+ * literal so a typo is visible on the wire instead of silently emptying.
+ * @param headers - the configured header values.
+ * @param options - the request options carrying the runtime substitution facts.
+ * @returns the resolved headers.
+ */
+function resolveHeaderTemplates(
+  headers: Readonly<Record<string, string>> | undefined,
+  options: GenerateOptions,
+): Record<string, string> {
+  const vars: Readonly<Record<string, string>> = {
+    sessionId: options.sessionId === undefined ? '' : String(options.sessionId),
+    provider: options.provider,
+    model: options.model,
+  }
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    out[key] = typeof value === 'string'
+      ? value.replace(/\$\{([A-Za-z][A-Za-z0-9_]*)\}/g, (raw: string, name: string) => vars[name] === undefined ? raw : vars[name])
+      : String(value)
+  }
+  return out
+}
+
+/**
  * pi-ai-backed multi-provider adapter. Each operation reads the current
  * profiles, so a configuration change reaches the next request without a
  * restart; model descriptors come from the collection those profiles built.
@@ -383,9 +411,10 @@ export class PiAiAdapter extends LlmAdapter {
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
-        // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        // Profile headers are deployment-owned; runtime templates are resolved
+        // first and attribution names are Harness-owned and therefore win
+        // collisions.
+        headers: requestHeaders(resolveHeaderTemplates(profile.headers, options)),
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false
