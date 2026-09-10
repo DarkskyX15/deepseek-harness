@@ -240,12 +240,14 @@ function ThinkingLevelsEditor(props: {
                   aria-label={`${t('thinkingLevels')} ${t(`thinkingLevel.${level}`)}`}
                   onChange={() => { toggleLevel(level) }}
                 />
-                <span className={styles['modelFieldLabel']}>{t(`thinkingLevel.${level}`)}</span>
+                {/* The level name lives in the placeholder, so the row is one
+                    compact line: a checkbox and the wire spelling. The name
+                    stays announced through the input's aria-label. */}
                 <input
                   className={`${styles['input']} ${styles['thinkingWire']}`}
                   type="text"
                   value={wireText(level)}
-                  placeholder={level === 'off' ? t('thinkingOffWire') : t('thinkingWirePlaceholder')}
+                  placeholder={t(`thinkingLevel.${level}`)}
                   aria-label={`${t(`thinkingLevel.${level}`)} ${t('thinkingWire')}`}
                   disabled={disabled || !(level in efforts)}
                   onChange={(event) => { editWire(level, event.target.value) }}
